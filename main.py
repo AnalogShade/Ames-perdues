@@ -206,25 +206,45 @@ def handle_wall_collisions(entity_x, entity_y, radius):
     new_x = entity_x
     new_y = entity_y
 
-    # Résoudre l'axe X
+    # 1. Résoudre l'axe X (collisions principalement horizontales)
     for wall in walls:
         if check_aabb_collision(new_x, entity_y, radius, wall.rect.x, wall.rect.y, wall.rect.w, wall.rect.h):
             closest_x = max(wall.rect.x, min(new_x, wall.rect.x + wall.rect.w))
-            overlap_x = radius - abs(new_x - closest_x)
-            if new_x < closest_x:
-                new_x -= overlap_x
-            else:
-                new_x += overlap_x
+            closest_y = max(wall.rect.y, min(entity_y, wall.rect.y + wall.rect.h))
+            
+            pen_x = radius - abs(new_x - closest_x)
+            pen_y = radius - abs(entity_y - closest_y)
+            
+            # Si la pénétration sur Y est plus faible, c'est une collision de type sol/plafond,
+            # on refuse donc tout déplacement correctif sur l'axe X.
+            if pen_y < pen_x:
+                continue
 
-    # Résoudre l'axe Y
+            wall_center_x = wall.rect.x + wall.rect.w / 2
+            if entity_x < wall_center_x:
+                new_x = wall.rect.x - radius
+            else:
+                new_x = wall.rect.x + wall.rect.w + radius
+
+    # 2. Résoudre l'axe Y (collisions principalement verticales)
     for wall in walls:
         if check_aabb_collision(new_x, new_y, radius, wall.rect.x, wall.rect.y, wall.rect.w, wall.rect.h):
+            closest_x = max(wall.rect.x, min(new_x, wall.rect.x + wall.rect.w))
             closest_y = max(wall.rect.y, min(new_y, wall.rect.y + wall.rect.h))
-            overlap_y = radius - abs(new_y - closest_y)
-            if new_y < closest_y:
-                new_y -= overlap_y
+            
+            pen_x = radius - abs(new_x - closest_x)
+            pen_y = radius - abs(new_y - closest_y)
+            
+            # Si la pénétration sur X est plus faible, c'est une collision de type mur latéral,
+            # on refuse donc tout déplacement correctif sur l'axe Y.
+            if pen_x < pen_y:
+                continue
+
+            wall_center_y = wall.rect.y + wall.rect.h / 2
+            if entity_y < wall_center_y:
+                new_y = wall.rect.y - radius
             else:
-                new_y += overlap_y
+                new_y = wall.rect.y + wall.rect.h + radius
 
     return new_x, new_y
 
