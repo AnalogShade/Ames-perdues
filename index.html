@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Le Dernier Survivant</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // Module de débogage d'urgence - affiche les erreurs directement à l'écran
+        window.onerror = function(message, source, lineno, colno, error) {
+            var div = document.createElement('div');
+            div.style.position = 'fixed';
+            div.style.top = '0';
+            div.style.left = '0';
+            div.style.width = '100%';
+            div.style.background = '#ff3333';
+            div.style.color = '#ffffff';
+            div.style.padding = '20px';
+            div.style.zIndex = '99999';
+            div.style.fontFamily = 'monospace';
+            div.style.fontSize = '14px';
+            div.style.lineHeight = '1.5';
+            div.style.boxShadow = '0 5px 15px rgba(0,0,0,0.5)';
+            div.style.whiteSpace = 'pre-wrap';
+            div.innerHTML = '<strong>🚨 Erreur JavaScript détectée :</strong><br>' + 
+                            message + '<br><br>' +
+                            '<strong>Fichier :</strong> ' + source + '<br>' +
+                            '<strong>Ligne :</strong> ' + lineno + ' | <strong>Colonne :</strong> ' + colno + '<br><br>' +
+                            '<em>Veuillez rafraîchir la page ou vérifier la console (F12).</em>';
+            document.body.appendChild(div);
+            return false;
+        };
+    </script>
+</head>
+<body>
+    <div id="canvas-container">
+        <!-- Interactive game canvas -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Fullscreen Button -->
+        <button id="fullscreenBtn" class="fullscreen-btn">Plein Écran</button>
+
+        <!-- Minimalist HUD -->
+        <div id="hud">
+            <div class="hud-item">
+                <div class="hud-label">SANTÉ (ESPRIT)</div>
+                <div class="hp-bar-container">
+                    <div id="hpBar" class="hp-bar"></div>
+                </div>
+            </div>
+            <div class="hud-item">
+                <div class="hud-label">Objectif</div>
+                <div id="objectiveText" class="hud-text">S'ÉCHAPPER DES RUINES</div>
+            </div>
+        </div>
+
+        <!-- Controls Instructions overlay (subtle in bottom corner) -->
+        <div id="instructions">
+            [Z,Q,S,D / WASD] SE DÉPLACER<br>
+            [SOURIS] VISER ET ORIENTER LE REGARD<br>
+            [CLIC GAUCHE / DROIT] COUPS DE POING ALTERNÉS<br>
+            [F] ACTIVER / DÉSACTIVER LA LANTERNE
+        </div>
+
+        <!-- Main Menu Overlay -->
+        <div id="mainMenu" class="overlay active">
+            <div class="menu-card">
+                <h1>LA CHUTE</h1>
+                <div class="tagline">Le Dernier Survivant</div>
+                <div class="story-text">
+                    Le monde s'est effondré en une nuit. Une force invisible, "La Chute", a vidé les humains de leur âme, les transformant en mutants violents et errent dans l'obscurité. Vous vous réveillez seul dans les ruines de votre maison. Vous n'avez pas d'armes, seulement vos poings, et une lanterne faiblissante. Trouvez la sortie pour survivre. Mais attention... vous n'êtes peut-être plus tout à fait humain vous-même.
+                </div>
+                <button id="startBtn" class="btn">Commencer l'exploration</button>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="gameOver" class="overlay">
+            <div class="menu-card">
+                <h1 style="color: #ff3333; text-shadow: 0 0 15px rgba(255, 51, 51, 0.6);">VOUS AVEZ SUCCOMBÉ</h1>
+                <div class="tagline" style="color: rgba(255, 51, 51, 0.6);">Votre âme a rejoint les ruines</div>
+                <div class="story-text" style="text-align: center; border-left: none; padding-left: 0; margin-bottom: 30px;">
+                    La Chute a fini par vous consumer. Vos forces vous ont abandonné dans les ténèbres absolues. Voulez-vous retenter de survivre ?
+                </div>
+                <button id="restartBtn" class="btn" style="border-color: rgba(255, 51, 51, 0.8);">Recommencer</button>
+            </div>
+        </div>
+
+        <!-- Victory Overlay -->
+        <div id="victoryMenu" class="overlay">
+            <div class="menu-card">
+                <h1 style="color: #ffffff; text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);">SORTIE ATTEINTE</h1>
+                <div class="tagline">Pour l'instant... vous survivez</div>
+                <div class="story-text" style="text-align: center; border-left: none; padding-left: 0; margin-bottom: 30px;">
+                    Vous avez franchi le portail de résonance mystique et échappé aux premiers mutants. Mais les symboles mystérieux peints sur le sol confirment ce que vous redoutiez : ce n'est que le début d'un cauchemar bien plus vaste.
+                </div>
+                <button id="nextLevelBtn" class="btn">Continuer l'aventure</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Game Scripts -->
+    <script src="game.js"></script>
+</body>
+</html>
