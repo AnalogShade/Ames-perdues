@@ -2,10 +2,187 @@ import pygame
 import math
 import random
 import sys
+import os
+import wave
+import struct
 
 # --- SYSTÈME DE DÉBOGAGE ET INITIALISATION DE PYGAME ---
 pygame.init()
 pygame.font.init()
+
+# Initialisation du mixer audio en mono 22050 Hz pour un style rétro
+pygame.mixer.init(frequency=22050, size=-16, channels=1)
+
+def generate_audio_assets():
+    import os
+    import wave
+    import struct
+    import math
+    import random
+
+    os.makedirs("assets", exist_ok=True)
+    sample_rate = 22050
+
+    def write_wav(filename, samples):
+        path = os.path.join("assets", filename)
+        if os.path.exists(path):
+            return
+        
+        # Clamp and pack samples
+        clamped = [int(max(-32768, min(32767, s))) for s in samples]
+        packed = struct.pack(f"<{len(clamped)}h", *clamped)
+        
+        with wave.open(path, 'wb') as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sample_rate)
+            w.writeframes(packed)
+
+    # 1. SFX HIT ("boom" croustillant rétro)
+    # Mélange d'une onde carrée balayant vers le bas et de bruit blanc avec extinction rapide
+    hit_samples = []
+    num_samples_hit = int(0.25 * sample_rate)
+    for i in range(num_samples_hit):
+        t = i / sample_rate
+        freq = 150 - (150 - 30) * (t / 0.25)
+        phase = 2 * math.pi * (150 * t - 240 * t * t)
+        sq = 0.7 * math.exp(-12 * t) * (1.0 if math.sin(phase) > 0 else -1.0)
+        ns = 0.7 * math.exp(-40 * t) * random.uniform(-1.0, 1.0)
+        hit_samples.append((sq + ns) * 32767)
+    write_wav("sfx_hit.wav", hit_samples)
+
+    # 2. SFX SWORD ("swoosh" de l'épée dans l'air)
+    # Bruit blanc avec extinction rapide et une onde carrée descendante
+    sword_samples = []
+    num_samples_sword = int(0.20 * sample_rate)
+    for i in range(num_samples_sword):
+        t = i / sample_rate
+        phase = 2 * math.pi * (800 * t - 1625 * t * t)
+        sq = 0.3 * math.exp(-15 * t) * (1.0 if math.sin(phase) > 0 else -1.0)
+        ns = 0.8 * math.exp(-15 * t) * random.uniform(-1.0, 1.0)
+        sword_samples.append((sq + ns) * 32767)
+    write_wav("sfx_sword.wav", sword_samples)
+
+    # 3. SFX HURT ("screamer" métallique lors des blessures)
+    # Onde carrée avec vibrato rapide
+    hurt_samples = []
+    num_samples_hurt = int(0.20 * sample_rate)
+    for i in range(num_samples_hurt):
+        t = i / sample_rate
+        phase = 2 * math.pi * 350 * t - 3.75 * math.cos(80 * math.pi * t)
+        sq = 0.7 * math.exp(-18 * t) * (1.0 if math.sin(phase) > 0 else -1.0)
+        ns = 0.3 * math.exp(-30 * t) * random.uniform(-1.0, 1.0)
+        hurt_samples.append((sq + ns) * 32767)
+    write_wav("sfx_hurt.wav", hurt_samples)
+
+    # 4. SFX DEFEAT (mélodie triste descendante)
+    # Suite de 4 notes tristes sur onde carrée
+    defeat_samples = []
+    notes_def = [261.63, 207.65, 196.00, 174.61] # Do4, Sol#3, Sol3, Fa3
+    phase = 0.0
+    for i in range(int(0.8 * sample_rate)):
+        t_total = i / sample_rate
+        note_idx = int(t_total / 0.2)
+        if note_idx > 3: note_idx = 3
+        freq = notes_def[note_idx]
+        
+        t_note = (i % int(0.2 * sample_rate)) / sample_rate
+        env = 0.6 * math.exp(-8 * t_note)
+        
+        phase += 2 * math.pi * freq / sample_rate
+        sq = 1.0 if math.sin(phase) > 0 else -1.0
+        defeat_samples.append(sq * env * 32767)
+    write_wav("sfx_defeat.wav", defeat_samples)
+
+    # 5. SFX VICTORY (fanfare triomphante ascendante)
+    # Suite de 4 notes sur ondes triangulaires
+    victory_samples = []
+    notes_vic = [261.63, 329.63, 392.00, 523.25] # Do4, Mi4, Sol4, Do5
+    phase = 0.0
+    for i in range(int(0.6 * sample_rate)):
+        t_total = i / sample_rate
+        note_idx = int(t_total / 0.15)
+        if note_idx > 3: note_idx = 3
+        freq = notes_vic[note_idx]
+        
+        t_note = (i % int(0.15 * sample_rate)) / sample_rate
+        env = 0.5 * math.exp(-5 * t_note)
+        
+        phase += 2 * math.pi * freq / sample_rate
+        tri = 4.0 * abs((phase % (2 * math.pi)) / (2 * math.pi) - 0.5) - 1.0
+        victory_samples.append(tri * env * 32767)
+    write_wav("sfx_victory.wav", victory_samples)
+
+    # 6. MUSIC LOOP (musique d'ambiance tendue de 8s)
+    # Mélodie onde carrée + Basse onde triangulaire
+    music_samples = []
+    bass_notes = [
+        55.00, 55.00, 55.00, 55.00, 55.00, 55.00, 55.00, 55.00, # A2
+        65.41, 65.41, 65.41, 65.41, 65.41, 65.41, 65.41, 65.41, # C3
+        73.42, 73.42, 73.42, 73.42, 73.42, 73.42, 73.42, 73.42, # D3
+        82.41, 82.41, 82.41, 82.41, 82.41, 82.41, 82.41, 82.41, # E3
+    ]
+    melody_notes = [
+        440.00, 493.88, 523.25, 659.25, # A4, Si4, Do5, Mi5
+        587.33, 523.25, 493.88, 415.30, # Ré5, Do5, Si4, Sol#4
+    ]
+
+    phase_bass = 0.0
+    phase_mel = 0.0
+    step_duration = 0.25
+
+    for i in range(int(8.0 * sample_rate)):
+        t = i / sample_rate
+        
+        step_idx = int(t / step_duration)
+        if step_idx > 31: step_idx = 31
+        
+        mel_idx = int(t / 1.0)
+        if mel_idx > 7: mel_idx = 7
+        
+        t_step = t % step_duration
+        t_note = t % 1.0
+        
+        # Basse (Triangle)
+        freq_bass = bass_notes[step_idx]
+        phase_bass += 2 * math.pi * freq_bass / sample_rate
+        tri_bass = 4.0 * abs((phase_bass % (2 * math.pi)) / (2 * math.pi) - 0.5) - 1.0
+        env_bass = 0.45 * math.exp(-12 * t_step)
+        bass_val = tri_bass * env_bass
+
+        # Mélodie (Square)
+        freq_mel = melody_notes[mel_idx]
+        phase_mel += 2 * math.pi * freq_mel / sample_rate
+        sq_mel = 1.0 if math.sin(phase_mel) > 0 else -1.0
+        env_mel = 0.25 * math.exp(-1.5 * t_note)
+        mel_val = sq_mel * env_mel
+        
+        music_samples.append((bass_val + mel_val) * 32767)
+    
+    write_wav("music.wav", music_samples)
+
+# Générer et charger les ressources audio
+generate_audio_assets()
+
+sfx_hit = pygame.mixer.Sound(os.path.join("assets", "sfx_hit.wav"))
+sfx_sword = pygame.mixer.Sound(os.path.join("assets", "sfx_sword.wav"))
+sfx_hurt = pygame.mixer.Sound(os.path.join("assets", "sfx_hurt.wav"))
+sfx_victory = pygame.mixer.Sound(os.path.join("assets", "sfx_victory.wav"))
+sfx_defeat = pygame.mixer.Sound(os.path.join("assets", "sfx_defeat.wav"))
+
+# --- SYSTÈME DE CONTRÔLE DU VOLUME MASTER ---
+master_volume = 0.5
+volume_indicator_timer = 0.0
+
+def apply_volume():
+    sfx_hit.set_volume(master_volume)
+    sfx_sword.set_volume(master_volume)
+    sfx_hurt.set_volume(master_volume)
+    sfx_victory.set_volume(master_volume)
+    sfx_defeat.set_volume(master_volume)
+    pygame.mixer.music.set_volume(master_volume)
+
+apply_volume()
 
 # --- CONFIGURATION DE LA FENÊTRE ---
 SCREEN_WIDTH = 1280
@@ -317,6 +494,8 @@ class ExitPortal:
         dist = math.hypot(self.x - player.x, self.y - player.y)
         if dist < player.radius + self.radius - 10:
             spawn_impact_particles(self.x, self.y, 40, (255,255,255))
+            sfx_victory.play()
+            pygame.mixer.music.stop()
             game_state_callback("VICTORY")
 
     def draw(self, surface, cam):
@@ -368,9 +547,14 @@ class Player:
         
         self.invuln_timer = 0
         self.lantern_active = True
+        self.death_timer = 0.0
 
     def update(self, dt, keys, mouse_world, click_left, click_right):
-        if self.is_dead: return
+        if self.is_dead:
+            self.death_timer += dt
+            if self.death_timer >= 1.5:
+                set_game_state("GAMEOVER")
+            return
 
         # Décrémenter les timers
         if self.punch_left_timer > 0: self.punch_left_timer -= dt
@@ -441,8 +625,10 @@ class Player:
                 hit = True
         if hit:
             trigger_screen_shake(2, 0.1)
+            sfx_hit.play()
 
     def perform_sword_attack(self):
+        sfx_sword.play()
         sweep_range = 65
         sweep_angle = math.pi * 0.8
         start_arc = self.look_angle - (sweep_angle / 2) * self.sword_swing_side
@@ -468,6 +654,7 @@ class Player:
                 hit = True
         if hit:
             trigger_screen_shake(4, 0.12)
+            sfx_hit.play()
 
     def take_damage(self, amount, source_x, source_y):
         if self.is_dead or self.invuln_timer > 0: return
@@ -487,6 +674,10 @@ class Player:
         if self.hp <= 0:
             self.is_dead = True
             spawn_impact_particles(self.x, self.y - 15, 35, (255, 51, 51))
+            sfx_defeat.play()
+            pygame.mixer.music.stop()
+        else:
+            sfx_hurt.play()
 
     def draw(self, surface, cam):
         if self.is_dead: return
@@ -916,6 +1107,11 @@ def set_game_state(new_state):
         player = Player(spawn_point[0], spawn_point[1])
         particles = []
         trigger_screen_shake(3, 0.15)
+        try:
+            pygame.mixer.music.load(os.path.join("assets", "music.wav"))
+            pygame.mixer.music.play(-1)
+        except Exception as e:
+            print("Erreur de chargement de la musique:", e)
 
 # --- DESSINER DES ÉCRANS DE MENU (GLASSMORPHISM EFFECT) ---
 def draw_menu_card(surface, title, subtitle, story_lines, btn_to_draw):
@@ -974,6 +1170,9 @@ while running:
         if screen_shake_timer <= 0:
             screen_shake_intensity = 0
 
+    if volume_indicator_timer > 0:
+        volume_indicator_timer -= dt
+
     # 2. GESTION DES EVENEMENTS (INPUTS)
     mouse_pos = pygame.mouse.get_pos()
     mouse_world = camera.to_world(mouse_pos[0], mouse_pos[1])
@@ -997,6 +1196,14 @@ while running:
             elif event.key == pygame.K_r:
                 if game_state in ["PLAYING", "GAMEOVER", "VICTORY"]:
                     set_game_state("PLAYING")
+            elif event.key in [pygame.K_KP_PLUS, pygame.K_PLUS, pygame.K_EQUALS]:
+                master_volume = min(1.0, master_volume + 0.1)
+                apply_volume()
+                volume_indicator_timer = 1.5
+            elif event.key in [pygame.K_KP_MINUS, pygame.K_MINUS]:
+                master_volume = max(0.0, master_volume - 0.1)
+                apply_volume()
+                volume_indicator_timer = 1.5
             elif event.key == pygame.K_ESCAPE:
                 running = False
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -1097,7 +1304,7 @@ while running:
         # Instructions bas gauche
         inst_surf1 = font_hud_label.render("[ZQSD / WASD / FLÈCHES] SE DÉPLACER", True, (100,100,100))
         inst_surf2 = font_hud_label.render("[SOURIS] VISER  |  [CLICS GAUCHE/DROIT] COUPS DE POING/ÉPÉE", True, (100,100,100))
-        inst_surf3 = font_hud_label.render("[F] LANTERNE  |  [R] RECOMMENCER  |  [F11] PLEIN ÉCRAN", True, (100,100,100))
+        inst_surf3 = font_hud_label.render("[F] LANTERNE  |  [R] RECOMMENCER  |  [KP+/-] VOLUME  |  [F11] PLEIN ÉCRAN", True, (100,100,100))
         screen.blit(inst_surf1, (30, SCREEN_HEIGHT - 75))
         screen.blit(inst_surf2, (30, SCREEN_HEIGHT - 55))
         screen.blit(inst_surf3, (30, SCREEN_HEIGHT - 35))
@@ -1146,6 +1353,51 @@ while running:
         draw_menu_card(screen, "SORTIE ATTEINTE", "Le premier pas vers la vérité", victory_text, btn_next)
 
     # Mettre à jour l'écran physique
+    if volume_indicator_timer > 0:
+        # Dimensions de l'indicateur de volume (translucide avec lueur néon)
+        val_w = 240
+        val_h = 65
+        val_x = SCREEN_WIDTH - val_w - 30
+        val_y = 30
+        
+        # Facteur de fondu (fade-out)
+        alpha_factor = min(1.0, volume_indicator_timer / 0.3)
+        bg_alpha = int(220 * alpha_factor)
+        
+        # Couleurs adaptées au fondu
+        text_color = (int(255 * alpha_factor), int(255 * alpha_factor), int(255 * alpha_factor))
+        border_color = (int(255 * alpha_factor), int(255 * alpha_factor), int(255 * alpha_factor))
+        gray_color = (int(150 * alpha_factor), int(150 * alpha_factor), int(150 * alpha_factor))
+        bar_bg_color = (int(40 * alpha_factor), int(40 * alpha_factor), int(40 * alpha_factor))
+        
+        # Fond translucide
+        bg_surface = pygame.Surface((val_w, val_h), pygame.SRCALPHA)
+        bg_surface.fill((10, 10, 10, bg_alpha))
+        screen.blit(bg_surface, (val_x, val_y))
+        
+        # Liseré de contour néon
+        draw_glow_line(screen, (val_x, val_y), (val_x + val_w, val_y), border_color, 1, border_color)
+        draw_glow_line(screen, (val_x, val_y + val_h), (val_x + val_w, val_y + val_h), border_color, 1, border_color)
+        draw_glow_line(screen, (val_x, val_y), (val_x, val_y + val_h), border_color, 1, border_color)
+        draw_glow_line(screen, (val_x + val_w, val_y), (val_x + val_w, val_y + val_h), border_color, 1, border_color)
+        
+        # Textes (Libellé et Pourcentage)
+        vol_pct = int(master_volume * 100)
+        vol_lbl = font_hud_label.render("VOLUME MASTER", True, gray_color)
+        screen.blit(vol_lbl, (val_x + 15, val_y + 12))
+        
+        vol_val = font_hud_value.render(f"{vol_pct}%", True, text_color)
+        val_rect = vol_val.get_rect()
+        val_rect.right = val_x + val_w - 15
+        val_rect.top = val_y + 5
+        screen.blit(vol_val, val_rect)
+        
+        # Barre de progression du volume
+        pygame.draw.rect(screen, bar_bg_color, (val_x + 15, val_y + 42, 210, 8), border_radius=4)
+        fill_w = int(210 * master_volume)
+        if fill_w > 0:
+            pygame.draw.rect(screen, text_color, (val_x + 15, val_y + 42, fill_w, 8), border_radius=4)
+
     pygame.display.flip()
 
 # --- FERMETURE DE PYGAME ---
