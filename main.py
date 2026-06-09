@@ -158,6 +158,17 @@ def spawn_trail_particles(x, y, count, color=(150, 150, 150)):
         decay = 0.04
         particles.append(Particle(x, y, vx, vy, color, size, life, decay))
 
+def spawn_directional_impact_particles(x, y, count, angle, spread=0.6, color=(255, 255, 255)):
+    for _ in range(count):
+        a = angle + random.uniform(-spread, spread)
+        speed = random.uniform(3, 10)
+        vx = math.cos(a) * speed
+        vy = math.sin(a) * speed
+        size = random.uniform(1, 4)
+        life = 1.0
+        decay = random.uniform(0.03, 0.06)
+        particles.append(Particle(x, y, vx, vy, color, size, life, decay, random.random() > 0.5))
+
 # --- SYSTEME DE SECOUSSE D'ECRAN ---
 screen_shake_timer = 0
 screen_shake_intensity = 0
@@ -166,6 +177,9 @@ def trigger_screen_shake(intensity, duration):
     global screen_shake_timer, screen_shake_intensity
     screen_shake_intensity = intensity
     screen_shake_timer = duration
+
+# --- SYSTEME DE HIT STOP ---
+hit_stop_timer = 0.0
 
 # --- MURS & COLLISIONS ---
 class Wall:
@@ -260,25 +274,90 @@ class WeaponItem:
         screen_x, screen_y = cam.to_screen(self.x, self.y)
         y_offset = int(math.sin(self.hover_time) * 6)
         
+        # Lueur pulsante néon ambre
+        pulse = 0.7 + 0.3 * math.sin(self.hover_time * 2.0)
+        color = (255, 190, 30)
+        glow_color = (255, 140, 0)
+        
         # Dessin de l'épée inclinée
         ang = -math.pi / 4
         # Points de l'épée locaux
-        # Lame
         l1 = (0, y_offset)
         l2 = (int(math.cos(ang - math.pi/2) * 18), y_offset + int(math.sin(ang - math.pi/2) * 18))
-        # Garde
         g1 = (int(math.cos(ang) * -6 + math.cos(ang - math.pi/2) * 5), y_offset + int(math.sin(ang) * -6 + math.sin(ang - math.pi/2) * 5))
         g2 = (int(math.cos(ang) * 6 + math.cos(ang - math.pi/2) * 5), y_offset + int(math.sin(ang) * 6 + math.sin(ang - math.pi/2) * 5))
-        # Poignée
         p1 = (int(math.cos(ang - math.pi/2) * 5), y_offset + int(math.sin(ang - math.pi/2) * 5))
         p2 = (int(math.cos(ang - math.pi/2) * -3), y_offset + int(math.sin(ang - math.pi/2) * -3))
 
-        draw_glow_line(surface, (screen_x + l1[0], screen_y + l1[1]), (screen_x + l2[0], screen_y + l2[1]), (255,255,255), 2)
-        draw_glow_line(surface, (screen_x + g1[0], screen_y + g1[1]), (screen_x + g2[0], screen_y + g2[1]), (255,255,255), 2)
-        draw_glow_line(surface, (screen_x + p1[0], screen_y + p1[1]), (screen_x + p2[0], screen_y + p2[1]), (255,255,255), 2)
+        draw_glow_line(surface, (screen_x + l1[0], screen_y + l1[1]), (screen_x + l2[0], screen_y + l2[1]), color, 2, glow_color)
+        draw_glow_line(surface, (screen_x + g1[0], screen_y + g1[1]), (screen_x + g2[0], screen_y + g2[1]), color, 2, glow_color)
+        draw_glow_line(surface, (screen_x + p1[0], screen_y + p1[1]), (screen_x + p2[0], screen_y + p2[1]), color, 2, glow_color)
         
-        # Halo de lueur autour
-        draw_glow_circle(surface, (screen_x, screen_y - 8 + y_offset), 16, (255,255,255,30), 1, (255,255,255))
+        # Halo de lueur pulsant
+        glow_radius = int(14 + 6 * pulse)
+        draw_glow_circle(surface, (screen_x, screen_y - 8 + y_offset), glow_radius, color, 1, glow_color)
+
+# --- AME CURATIVE A COLLECTER ---
+class Soul:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.radius = 5
+        self.hp_value = 1
+        
+        # Dispersion initiale aléatoire
+        angle = random.uniform(0, 2 * math.pi)
+        speed = random.uniform(2, 5)
+        self.vx = math.cos(angle) * speed
+        self.vy = math.sin(angle) * speed
+        self.color = (100, 230, 255) # Cyan néon
+        
+        self.attract_timer = 0.4 # Flotte d'abord 0.4s avant de foncer sur le joueur
+
+    def update(self, dt, player_obj):
+        if self.attract_timer > 0:
+            self.attract_timer -= dt
+            self.x += self.vx * dt * 60
+            self.y += self.vy * dt * 60
+            self.vx *= 0.9
+            self.vy *= 0.9
+        else:
+            # Guidage magnétique vers le torse du joueur
+            dx = player_obj.x - self.x
+            dy = (player_obj.y - 15) - self.y
+            dist = math.hypot(dx, dy)
+            if dist < 1.0: dist = 1.0
+            
+            # Accélération homing
+            accel = 500.0 # pixels/s^2
+            self.vx += (dx / dist) * accel * dt
+            self.vy += (dy / dist) * accel * dt
+            
+            # Vitesse max
+            speed = math.hypot(self.vx, self.vy)
+            max_speed = 400.0
+            if speed > max_speed:
+                self.vx = (self.vx / speed) * max_speed
+                self.vy = (self.vy / speed) * max_speed
+                
+            self.x += self.vx * dt
+            self.y += self.vy * dt
+
+        # Petite traînée cyan
+        if random.random() < 0.2:
+            particles.append(Particle(self.x, self.y, -self.vx * 0.1, -self.vy * 0.1, self.color, 1.5, 0.4, 0.05))
+
+        # Collision avec le joueur
+        dist_to_player = math.hypot(player_obj.x - self.x, (player_obj.y - 15) - self.y)
+        if dist_to_player < player_obj.radius + 6:
+            player_obj.hp = min(player_obj.max_hp, player_obj.hp + self.hp_value)
+            spawn_impact_particles(self.x, self.y, 4, self.color)
+            return True # Détruire l'âme
+        return False
+
+    def draw(self, surface, cam):
+        screen_pos = cam.to_screen(self.x, self.y)
+        draw_glow_circle(surface, screen_pos, self.radius, (255, 255, 255), 0, self.color)
 
 sword_item = None
 
@@ -298,7 +377,7 @@ class ExitPortal:
             r = random.uniform(0, self.radius)
             px = self.x + math.cos(a) * r
             py = self.y + math.sin(a) * r
-            particles.append(Particle(px, py, 0, -random.uniform(0.5, 1.0), (255,255,255), random.uniform(1, 2), 0.8, 0.03))
+            particles.append(Particle(px, py, 0, -random.uniform(0.5, 1.0), random.choice([(255,0,255), (180,0,255)]), random.uniform(1, 2), 0.8, 0.03))
 
         dist = math.hypot(self.x - player.x, self.y - player.y)
         if dist < player.radius + self.radius - 10:
@@ -310,20 +389,23 @@ class ExitPortal:
     def draw(self, surface, cam):
         screen_pos = cam.to_screen(self.x, self.y)
         
+        color_ext = (255, 0, 255) # Magenta
+        color_int = (180, 0, 255) # Violet
+        
         # Anneau extérieur
-        draw_glow_circle(surface, screen_pos, self.radius, (255,255,255), 2, (255,255,255))
+        draw_glow_circle(surface, screen_pos, self.radius, color_ext, 2, color_ext)
         # Anneau intérieur
-        draw_glow_circle(surface, screen_pos, self.radius - 10, (200,200,200), 1, (200,200,200))
+        draw_glow_circle(surface, screen_pos, self.radius - 10, color_int, 1, color_int)
         # Noyau
         core_r = int(6 + math.sin(self.angle * 4) * 2)
-        draw_glow_circle(surface, screen_pos, core_r, (255,255,255), 0, (255,255,255))
+        draw_glow_circle(surface, screen_pos, core_r, (255, 255, 255), 0, color_ext)
 
-        # Rayons décoratifs
+        # Rayons décoratifs magenta/violet
         for i in range(4):
             a = self.angle + (i * math.pi / 2)
             s_pt = (screen_pos[0] + int(math.cos(a) * (self.radius + 5)), screen_pos[1] + int(math.sin(a) * (self.radius + 5)))
             e_pt = (screen_pos[0] + int(math.cos(a) * (self.radius + 12)), screen_pos[1] + int(math.sin(a) * (self.radius + 12)))
-            draw_glow_line(surface, s_pt, e_pt, (255,255,255,100), 1)
+            draw_glow_line(surface, s_pt, e_pt, color_int, 1, color_ext)
 
 exit_portal = None
 
@@ -357,6 +439,9 @@ class Player:
         self.invuln_timer = 0
         self.lantern_active = True
         self.death_timer = 0.0
+        
+        self.kb_vx = 0.0
+        self.kb_vy = 0.0
 
     def update(self, dt, keys, mouse_world, click_left, click_right):
         if self.is_dead:
@@ -395,6 +480,39 @@ class Player:
             self.is_moving = False
             self.bob_time += dt * 3.5
 
+        # Recul fluide
+        self.x += self.kb_vx * dt
+        self.y += self.kb_vy * dt
+        self.kb_vx *= math.exp(-15 * dt)
+        self.kb_vy *= math.exp(-15 * dt)
+        if math.hypot(self.kb_vx, self.kb_vy) < 10:
+            self.kb_vx = 0.0
+            self.kb_vy = 0.0
+
+        # Traînée lumineuse de l'épée pendant le swing
+        if self.sword_swing_timer > 0:
+            pct = (self.sword_swing_duration - self.sword_swing_timer) / self.sword_swing_duration
+            if pct < 0.25:
+                eased_pct = (pct / 0.25) * 0.1
+            else:
+                t = (pct - 0.25) / 0.75
+                eased_pct = 0.1 + 0.9 * (t * t * (3.0 - 2.0 * t))
+            
+            swing_angle = self.look_angle + (-math.pi / 2 + math.pi * eased_pct) * self.sword_swing_side
+            arm_length = 16
+            hand_x = self.x + math.cos(swing_angle) * arm_length
+            hand_y = (self.y - 15) + math.sin(swing_angle) * arm_length
+            
+            # Pointe et milieu de la lame
+            tip_x = hand_x + math.cos(swing_angle) * 32
+            tip_y = hand_y + math.sin(swing_angle) * 32
+            mid_x = (hand_x + tip_x) / 2
+            mid_y = (hand_y + tip_y) / 2
+            
+            # Particules de traînée
+            particles.append(Particle(tip_x, tip_y, 0, 0, (255, 255, 255), 2.5, 0.15, 0.025))
+            particles.append(Particle(mid_x, mid_y, 0, 0, (200, 240, 255), 1.5, 0.12, 0.025))
+
         # Collisions
         self.x, self.y = handle_wall_collisions(self.x, self.y, self.radius)
 
@@ -420,49 +538,58 @@ class Player:
                         self.perform_fist_punch("right")
 
     def perform_fist_punch(self, side):
+        global hit_stop_timer
         punch_dist = 32
         impact_x = self.x + math.cos(self.look_angle) * punch_dist
         impact_y = (self.y - 15) + math.sin(self.look_angle) * punch_dist
         
-        spawn_impact_particles(impact_x, impact_y, 4, (255,255,255))
+        spawn_directional_impact_particles(impact_x, impact_y, 4, self.look_angle, 0.6, (255,255,255))
         
         hit = False
         for enemy in enemies:
-            dist = math.hypot(enemy.x - impact_x, enemy.y - impact_y)
+            # Correction collision haut/bas
+            dist = math.hypot(enemy.x - impact_x, (enemy.y - 15) - impact_y)
             if dist < enemy.radius + 10:
                 enemy.take_damage(15, self.x, self.y)
                 hit = True
+                spawn_directional_impact_particles(impact_x, impact_y, 8, self.look_angle, 0.5, (255, 255, 255))
         if hit:
             trigger_screen_shake(2, 0.1)
+            hit_stop_timer = 0.04
             audio.play_hit()
 
     def perform_sword_attack(self):
+        global hit_stop_timer
         audio.play_sword()
         sweep_range = 65
         sweep_angle = math.pi * 0.8
         start_arc = self.look_angle - (sweep_angle / 2) * self.sword_swing_side
         
-        # Créer des particules en arc
-        for i in range(7):
-            a = start_arc + (sweep_angle * (i / 6.0)) * self.sword_swing_side
+        # Particules de vent initial
+        for i in range(4):
+            a = start_arc + (sweep_angle * (i / 3.0)) * self.sword_swing_side
             px = self.x + math.cos(a) * sweep_range
             py = (self.y - 15) + math.sin(a) * sweep_range
-            particles.append(Particle(px, py, math.cos(a)*2, math.sin(a)*2, (255,255,255), 2, 0.3, 0.05))
+            particles.append(Particle(px, py, math.cos(a)*1, math.sin(a)*1, (200,240,255), 1.5, 0.2, 0.04))
 
         hit = False
         for enemy in enemies:
-            angle_to_enemy = math.atan2(enemy.y - (self.y - 15), enemy.x - self.x)
+            # Correction collision haut/bas symétrique (waist to waist)
+            angle_to_enemy = math.atan2(enemy.y - self.y, enemy.x - self.x)
             diff_angle = angle_to_enemy - self.look_angle
             
             while diff_angle < -math.pi: diff_angle += math.pi * 2
             while diff_angle > math.pi: diff_angle -= math.pi * 2
 
-            dist = math.hypot(enemy.x - self.x, enemy.y - (self.y - 15))
+            dist = math.hypot(enemy.x - self.x, enemy.y - self.y)
             if dist < sweep_range + enemy.radius and abs(diff_angle) < sweep_angle / 2:
                 enemy.take_damage(40, self.x, self.y)
                 hit = True
+                impact_angle = math.atan2(enemy.y - self.y, enemy.x - self.x)
+                spawn_directional_impact_particles(enemy.x, enemy.y - 15, 15, impact_angle, 0.7, (255, 255, 255))
         if hit:
             trigger_screen_shake(4, 0.12)
+            hit_stop_timer = 0.06
             audio.play_hit()
 
     def take_damage(self, amount, source_x, source_y):
@@ -471,18 +598,17 @@ class Player:
         self.hp = max(0, self.hp - amount)
         self.invuln_timer = 0.5
         
-        # Recul
+        # Recul fluide
         angle = math.atan2(self.y - source_y, self.x - source_x)
-        self.x += math.cos(angle) * 20
-        self.y += math.sin(angle) * 20
-        self.x, self.y = handle_wall_collisions(self.x, self.y, self.radius)
+        self.kb_vx = math.cos(angle) * 500.0
+        self.kb_vy = math.sin(angle) * 500.0
 
         trigger_screen_shake(8, 0.25)
-        spawn_impact_particles(self.x, self.y - 15, 15, (255, 51, 51))
+        spawn_directional_impact_particles(self.x, self.y - 15, 15, angle, 0.6, (255, 51, 51))
 
         if self.hp <= 0:
             self.is_dead = True
-            spawn_impact_particles(self.x, self.y - 15, 35, (255, 51, 51))
+            spawn_directional_impact_particles(self.x, self.y - 15, 35, angle, 1.0, (255, 51, 51))
             audio.play_defeat()
             audio.stop_music()
         else:
@@ -549,19 +675,31 @@ class Player:
             # Rendu avec épée
             if self.sword_swing_timer > 0:
                 pct = (self.sword_swing_duration - self.sword_swing_timer) / self.sword_swing_duration
-                swing_angle = self.look_angle + (-math.pi / 2 + math.pi * pct) * self.sword_swing_side
+                # Easing cubique pour l'animation
+                if pct < 0.25:
+                    eased_pct = (pct / 0.25) * 0.1
+                else:
+                    t = (pct - 0.25) / 0.75
+                    eased_pct = 0.1 + 0.9 * (t * t * (3.0 - 2.0 * t))
+                
+                swing_angle = self.look_angle + (-math.pi / 2 + math.pi * eased_pct) * self.sword_swing_side
                 
                 hand = (screen_pos[0] + int(math.cos(swing_angle) * arm_length), neck_y + int(math.sin(swing_angle) * arm_length))
                 
                 draw_glow_line(surface, shoulder_l, hand, color, 2, glow_color)
                 draw_glow_line(surface, shoulder_r, hand, color, 2, glow_color)
 
-                # Dessiner l'épée swing
-                sw_ang = swing_angle + math.pi/4 * self.sword_swing_side
-                blade_tip = (hand[0] + int(math.cos(sw_ang - math.pi/2) * 32), hand[1] + int(math.sin(sw_ang - math.pi/2) * 32))
-                g_l = (hand[0] + int(math.cos(sw_ang) * -9 + math.cos(sw_ang - math.pi/2) * 8), hand[1] + int(math.sin(sw_ang) * -9 + math.sin(sw_ang - math.pi/2) * 8))
-                g_r = (hand[0] + int(math.cos(sw_ang) * 9 + math.cos(sw_ang - math.pi/2) * 8), hand[1] + int(math.sin(sw_ang) * 9 + math.sin(sw_ang - math.pi/2) * 8))
-                pom_pt = (hand[0] + int(math.cos(sw_ang - math.pi/2) * -7), hand[1] + int(math.sin(sw_ang - math.pi/2) * -7))
+                # Dessiner l'épée avec géométrie unifiée
+                blade_angle = swing_angle
+                blade_tip = (hand[0] + int(math.cos(blade_angle) * 32), hand[1] + int(math.sin(blade_angle) * 32))
+                
+                g_l = (hand[0] + int(math.cos(blade_angle) * 4 + math.cos(blade_angle + math.pi/2) * 8),
+                       hand[1] + int(math.sin(blade_angle) * 4 + math.sin(blade_angle + math.pi/2) * 8))
+                g_r = (hand[0] + int(math.cos(blade_angle) * 4 + math.cos(blade_angle - math.pi/2) * 8),
+                       hand[1] + int(math.sin(blade_angle) * 4 + math.sin(blade_angle - math.pi/2) * 8))
+                
+                pom_pt = (hand[0] - int(math.cos(blade_angle) * 6),
+                          hand[1] - int(math.sin(blade_angle) * 6))
 
                 draw_glow_line(surface, hand, blade_tip, (255,255,255), 3)
                 draw_glow_line(surface, g_l, g_r, (255,255,255), 2)
@@ -573,11 +711,17 @@ class Player:
                 draw_glow_line(surface, shoulder_l, hand, color, 2, glow_color)
                 draw_glow_line(surface, shoulder_r, hand, color, 2, glow_color)
 
-                sw_ang = self.look_angle + 0.3
-                blade_tip = (hand[0] + int(math.cos(sw_ang - math.pi/2) * 28), hand[1] + int(math.sin(sw_ang - math.pi/2) * 28))
-                g_l = (hand[0] + int(math.cos(sw_ang) * -7 + math.cos(sw_ang - math.pi/2) * 5), hand[1] + int(math.sin(sw_ang) * -7 + math.sin(sw_ang - math.pi/2) * 5))
-                g_r = (hand[0] + int(math.cos(sw_ang) * 7 + math.cos(sw_ang - math.pi/2) * 5), hand[1] + int(math.sin(sw_ang) * 7 + math.sin(sw_ang - math.pi/2) * 5))
-                pom_pt = (hand[0] + int(math.cos(sw_ang - math.pi/2) * -5), hand[1] + int(math.sin(sw_ang - math.pi/2) * -5))
+                # Géométrie unifiée pour la garde passive
+                blade_angle = self.look_angle - 1.27
+                blade_tip = (hand[0] + int(math.cos(blade_angle) * 28), hand[1] + int(math.sin(blade_angle) * 28))
+                
+                g_l = (hand[0] + int(math.cos(blade_angle) * 4 + math.cos(blade_angle + math.pi/2) * 6),
+                       hand[1] + int(math.sin(blade_angle) * 4 + math.sin(blade_angle + math.pi/2) * 6))
+                g_r = (hand[0] + int(math.cos(blade_angle) * 4 + math.cos(blade_angle - math.pi/2) * 6),
+                       hand[1] + int(math.sin(blade_angle) * 4 + math.sin(blade_angle - math.pi/2) * 6))
+                
+                pom_pt = (hand[0] - int(math.cos(blade_angle) * 5),
+                          hand[1] - int(math.sin(blade_angle) * 5))
 
                 draw_glow_line(surface, hand, blade_tip, (255,255,255), 2)
                 draw_glow_line(surface, g_l, g_r, (255,255,255), 2)
@@ -628,9 +772,21 @@ class Enemy:
         self.bob_time = random.uniform(0, 100)
         self.swipe_timer = 0
         self.swipe_duration = 0.2
+        
+        self.kb_vx = 0.0
+        self.kb_vy = 0.0
 
     def update(self, dt, player_obj):
         if player_obj.is_dead: return
+
+        # Recul fluide appliqué dans tous les états
+        self.x += self.kb_vx * dt
+        self.y += self.kb_vy * dt
+        self.kb_vx *= math.exp(-15 * dt)
+        self.kb_vy *= math.exp(-15 * dt)
+        if math.hypot(self.kb_vx, self.kb_vy) < 10:
+            self.kb_vx = 0.0
+            self.kb_vy = 0.0
 
         if self.stun_timer > 0:
             self.stun_timer -= dt
@@ -653,10 +809,12 @@ class Enemy:
                 spawn_impact_particles(self.x, self.y - 25, 6, (255, 51, 51))
                 trigger_screen_shake(1.5, 0.1)
             self.bob_time += dt * 2
+            self.x, self.y = handle_wall_collisions(self.x, self.y, self.radius)
         elif self.state == "ALERT":
             self.look_angle = math.atan2(player_obj.y - self.y, player_obj.x - self.x)
             if self.stun_timer <= 0:
                 self.state = "CHASING"
+            self.x, self.y = handle_wall_collisions(self.x, self.y, self.radius)
         elif self.state == "CHASING":
             self.look_angle = math.atan2(player_obj.y - self.y, player_obj.x - self.x)
             
@@ -680,19 +838,31 @@ class Enemy:
         self.state = "STUNNED"
         self.stun_timer = 0.25
         
-        # Recul
+        # Recul fluide
         angle = math.atan2(self.y - source_y, self.x - source_x)
-        knock = 15 if self.is_boss else 35
-        self.x += math.cos(angle) * knock
-        self.y += math.sin(angle) * knock
-        self.x, self.y = handle_wall_collisions(self.x, self.y, self.radius)
+        force = 300.0 if self.is_boss else 800.0
+        self.kb_vx = math.cos(angle) * force
+        self.kb_vy = math.sin(angle) * force
 
-        spawn_impact_particles(self.x, self.y - 12, 10, (150, 0, 0))
-        spawn_impact_particles(self.x, self.y - 12, 5, (255, 51, 51))
+        # Particules directionnelles
+        spawn_directional_impact_particles(self.x, self.y - 12, 10, angle, 0.6, (255, 51, 51))
+        spawn_directional_impact_particles(self.x, self.y - 12, 5, angle, 0.6, (150, 0, 0))
 
         if self.hp <= 0:
-            spawn_impact_particles(self.x, self.y - 12, 45 if self.is_boss else 20, (150, 0, 0))
-            spawn_impact_particles(self.x, self.y - 12, 20 if self.is_boss else 10, (255, 255, 255))
+            # Onde de choc circulaire rouge néon à la mort (24 particules distribuées sur 360°)
+            for i in range(24):
+                a = (i / 24.0) * math.pi * 2
+                speed = 5.0
+                vx = math.cos(a) * speed
+                vy = math.sin(a) * speed
+                particles.append(Particle(self.x, self.y - 12, vx, vy, (255, 51, 51), 3.0, 0.8, 0.04))
+            
+            # Apparition de 3 âmes curatives cyan
+            for _ in range(3):
+                souls.append(Soul(self.x, self.y - 12))
+            
+            spawn_directional_impact_particles(self.x, self.y - 12, 15, angle, 1.0, (150, 0, 0))
+            spawn_directional_impact_particles(self.x, self.y - 12, 10, angle, 1.0, (255, 255, 255))
             if self in enemies:
                 enemies.remove(self)
             trigger_screen_shake(7 if self.is_boss else 3, 0.15)
@@ -792,12 +962,14 @@ class Enemy:
             pygame.draw.rect(surface, (100,100,100), (bx, by, bar_w, bar_h), 1)
 
 enemies = []
+souls = []
 
 # --- CONSTRUCTIONS DES ELEMENTS DU JEU ---
 def build_map():
-    global spawn_point, exit_portal, sword_item, enemies, walls
+    global spawn_point, exit_portal, sword_item, enemies, walls, souls
     walls = []
     enemies = []
+    souls = []
     exit_portal = None
     sword_item = None
 
@@ -909,12 +1081,13 @@ btn_restart = PygameButton(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 80, 250, 50, "REC
 btn_next = PygameButton(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 80, 300, 50, "CONTINUER L'AVENTURE")
 
 def set_game_state(new_state):
-    global game_state, player, particles
+    global game_state, player, particles, souls
     game_state = new_state
     if new_state == "PLAYING":
         build_map()
         player = Player(spawn_point[0], spawn_point[1])
         particles = []
+        souls = []
         trigger_screen_shake(3, 0.15)
         audio.play_music()
 
@@ -1023,19 +1196,26 @@ while running:
 
     # 3. MISE A JOUR DES ACTIONS EN JEU
     if game_state == "PLAYING" and player:
-        keys = pygame.key.get_pressed()
-        player.update(dt, keys, mouse_world, click_l, click_r)
-        camera.update(player.x, player.y)
+        if hit_stop_timer > 0:
+            hit_stop_timer -= dt
+            
+        if hit_stop_timer <= 0:
+            keys = pygame.key.get_pressed()
+            player.update(dt, keys, mouse_world, click_l, click_r)
+            camera.update(player.x, player.y)
 
-        # Update Ennemis
-        for enemy in enemies:
-            enemy.update(dt, player)
+            # Update Ennemis
+            for enemy in enemies:
+                enemy.update(dt, player)
 
-        # Update Items
-        if sword_item: sword_item.update(dt, player)
-        if exit_portal: exit_portal.update(dt, player, set_game_state)
+            # Update Items
+            if sword_item: sword_item.update(dt, player)
+            if exit_portal: exit_portal.update(dt, player, set_game_state)
+            
+            # Update Âmes curatives
+            souls = [s for s in souls if not s.update(dt, player)]
 
-        # Update Particules
+        # Les particules et la secousse continuent pendant le hitstop
         for p in particles:
             p.update(dt)
         particles = [p for p in particles if p.life > 0]
@@ -1068,6 +1248,10 @@ while running:
     # Dessiner les particules
     for p in particles:
         p.draw(game_surf, camera)
+
+    # Dessiner les âmes curatives
+    for s in souls:
+        s.draw(game_surf, camera)
 
     # Dessiner les mutants
     for enemy in enemies:
